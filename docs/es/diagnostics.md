@@ -17,3 +17,9 @@ Continúa con [Android / ARMSX2](android.md) o [PS2 real](ps2.md). Para otro equ
 ---
 
 Guías relacionadas: [Requisitos previos: parche del juego, Python y cuenta](prerequisites.md) · [PCSX2 en el mismo equipo Windows](windows.md) · [PCSX2 en el mismo equipo Linux](linux.md) · [ARMSX2 en Android](android.md) · [PlayStation 2 real](ps2.md) · [Contenedor en Linux](container.md)
+
+## Diagnóstico de reconexiones WSS
+
+En el modo Ethernet local, el registro cuenta los mensajes de texto WSS por separado de las tramas Ethernet. `peer_gone` y `peer_trk` indican que un texto JSON válido contenía el marcador conocido `kk-peer-gone` o `kk-peer-trk`; `other_json` y `non_json` cubren los demás textos. El relay ignora estos avisos. Solo se registra la primera aparición de cada categoría por sesión; los contadores aparecen cada 30 segundos y al terminar el relay. Los contadores se reinician en cada sesión del relay.
+
+Las líneas de reconexión incluyen un motivo local y la duración de la sesión. Cuando están disponibles, incluyen códigos numéricos de cierre WebSocket, estado HTTP del handshake o números de error del sistema. El número de intento y la indicación de DHCP del emulador ayudan a distinguir fallos antes del tráfico del juego de las desconexiones durante la partida. No se registran motivos de cierre remotos, contenido JSON, contenido de paquetes ni credenciales. Tras reproducir el problema, usa **Copy diagnostic report** e indica la hora aproximada del fallo.

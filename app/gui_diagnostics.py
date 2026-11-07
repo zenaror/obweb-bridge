@@ -27,7 +27,7 @@ PHASES = {
 def code_id():
     digest = hashlib.sha256()
     for name in ('gui.py', 'gui_backend.py', 'gui_worker.py', 'gui_transport.py',
-                 'gui_diagnostics.py', 'ethernet.py', 'ethernet_adapter.py', 'windows_stop.py'):
+                 'gui_diagnostics.py', 'ethernet.py', 'ethernet_adapter.py', 'windows_stop.py', 'service.py'):
         try:
             digest.update(name.encode('ascii'))
             digest.update((APP_DIR / name).read_bytes())

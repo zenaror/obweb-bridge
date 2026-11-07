@@ -2,6 +2,7 @@
 """Dedicated local Ethernet endpoint to WSS; gateway.py remains the LAN gateway."""
 import argparse
 import asyncio
+import json
 from datetime import datetime
 import struct
 import sys
@@ -38,6 +39,13 @@ async def relay(ws, adapter, state=None):
     state = state if state is not None else {}
     guest = state.get('mac')
     counts = dict(sent=0, received=0, ignored=0)
+    notices = dict(text=0, peer_gone=0, peer_trk=0, other_json=0, non_json=0, invalid_binary=0)
+    started = asyncio.get_running_loop().time()
+
+    def summary(label):
+        age = asyncio.get_running_loop().time() - started
+        log(f'Ethernet{label}: sent={counts["sent"]} received={counts["received"]} ignored={counts["ignored"]} '
+            f'| WSS: {notices} | guest_DHCP_seen={guest is not None}; relay duration={age:.1f}s')
 
     async def transmit():
         nonlocal guest
@@ -70,8 +78,23 @@ async def relay(ws, adapter, state=None):
     async def receive():
         async for frame in ws:
             if isinstance(frame, str):
+                notices['text'] += 1
+                try:
+                    json.loads(frame)
+                except (ValueError, RecursionError):
+                    category = 'non_json'
+                else:
+                    category = ('peer_gone' if 'kk-peer-gone' in frame else
+                                'peer_trk' if 'kk-peer-trk' in frame else 'other_json')
+                notices[category] += 1
+                if notices[category] == 1:
+                    log(f'WSS text notice ignored: category={category}; content omitted. '
+                        'Further occurrences are counted in Ethernet summaries.')
                 continue
             if not isinstance(frame, bytes) or not 14 <= len(frame) <= 65535:
+                notices['invalid_binary'] += 1
+                size = len(frame) if isinstance(frame, bytes) else 'not-binary'
+                log(f'WSS rejected Ethernet frame: bytes={size}; expected=14..65535. Content omitted.')
                 raise Reconnect('Invalid Ethernet frame from WSS')
             if guest is not None:
                 frame = inbound(frame, guest)
@@ -83,12 +106,15 @@ async def relay(ws, adapter, state=None):
             except OSError:
                 raise RuntimeError('Local Ethernet adapter write failed.') from None
             counts['received'] += 1
+        code = getattr(ws, 'close_code', None)
+        if isinstance(code, int):
+            log(f'WSS receive stream ended: close_code={code}; remote reason omitted.')
         raise Reconnect('WebSocket closed by the server')
 
     async def status():
         while True:
             await asyncio.sleep(30)
-            log(f'Ethernet: sent={counts["sent"]} received={counts["received"]} ignored={counts["ignored"]}')
+            summary('')
 
     tasks = [asyncio.create_task(f()) for f in (transmit, receive, status)]
     try:
@@ -99,6 +125,7 @@ async def relay(ws, adapter, state=None):
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        summary(' session ended')
 
 
 async def run(adapter):
@@ -106,9 +133,12 @@ async def run(adapter):
     from websockets.exceptions import WebSocketException
     state = {}
     connected_before = False
+    attempt = 0
 
     async def session():
-        nonlocal connected_before
+        nonlocal connected_before, attempt
+        attempt += 1
+        log(f'WSS connection attempt={attempt}; guest_DHCP_known={bool(state.get("mac"))}.')
         try:
             async with connect(URL, origin=ORIGIN, compression=None, proxy=None,
                                open_timeout=15, close_timeout=3, max_size=65535,
